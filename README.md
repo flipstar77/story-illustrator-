@@ -1,0 +1,329 @@
+# Story Illustrator V3
+
+A complete workflow tool for creating illustrated story videos with automated image generation, video rendering, and multi-language subtitles.
+
+## 🎯 Features
+
+### Phase 1: Story Chunking
+- **Manual Mode**: Copy prompt to ChatGPT for chunking
+- **API Mode**: Automatic chunking using GPT-4o-mini (~$0.001-0.003 per story)
+- Parses sections and creates folder structure
+- Auto-saves projects for resuming later
+
+### Phase 2: Image Generation Automation
+- Automated prompts for each story section
+- PyAutoGUI-based browser automation
+- Configurable delays and image counts
+- AFK-safe operation
+
+### Phase 3: Video Production
+- FFmpeg-based video rendering with customizable settings
+  - Image duration (1-30 seconds)
+  - Transitions (crossfade, none)
+  - Resolution (1080p, 720p, 4K)
+  - FPS (15-60)
+  - Music volume control
+- Voiceover + background music mixing
+- **Audio compression** (auto-compress >25MB files for Whisper)
+- **SRT subtitle generation** via OpenAI Whisper API
+- Open videos folder and last video directly from UI
+- Progress monitoring with detailed error logging
+
+### Phase 4: Multi-Language Subtitles
+- Translate SRT to 10 languages simultaneously
+- Uses GPT-4o-mini for accurate translations
+- Preserves timestamps and formatting
+- Perfect for YouTube multi-language captions
+
+## 📁 Project Structure
+
+```
+story_illustrator/
+├── story_illustrator_v3.py          # Main application (clean, 650 lines)
+├── story_illustrator_v2.py          # Legacy monolithic version (1460 lines)
+├── story_illustrator/               # Modular components
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── project_manager.py      # Project save/load (130 lines)
+│   │   ├── phase1_logic.py         # Story chunking (90 lines)
+│   │   ├── phase2_logic.py         # Image automation (160 lines)
+│   │   ├── phase3_logic.py         # Video rendering (280 lines)
+│   │   ├── phase4_logic.py         # SRT translation (150 lines)
+│   │   └── tts_generator.py        # TTS integration (ready for Kokoro)
+│   └── utils/
+│       ├── __init__.py
+│       └── config.py                # Configuration management (50 lines)
+├── projects/                         # Saved projects (auto-created)
+├── story_images/                     # Section folders with images
+└── videos/                           # Rendered videos
+```
+
+## 🚀 Installation
+
+### Requirements
+```bash
+pip install -r requirements.txt
+```
+
+**requirements.txt:**
+```
+pyautogui>=0.9.54
+pyperclip>=1.9.0
+openai>=1.0.0
+```
+
+### External Dependencies
+- **FFmpeg**: Required for video rendering
+  - Download: https://ffmpeg.org/download.html
+  - Add to PATH
+
+## 📖 Usage
+
+### Quick Start
+
+```bash
+python story_illustrator_v3.py
+```
+
+### Workflow
+
+**Phase 1: Chunk Your Story**
+1. Load a story text file
+2. Option A: Click "Chunk via API" (automatic)
+3. Option B: Click "Copy Prompt" → paste in ChatGPT → copy response → Phase 2
+4. Project is auto-saved
+
+**Phase 2: Generate Images**
+1. Select your project from dropdown
+2. Configure settings (images per section, delays)
+3. Click "Start Automation"
+4. Switch to browser, ChatGPT should be open
+5. Script will automatically send prompts and "go on" commands
+6. Download images manually to section folders
+
+**Phase 3: Create Videos**
+1. Select project and section
+2. Enter OpenAI API key (for SRT generation)
+3. Browse for voiceover audio (optional)
+4. Browse for background music (optional)
+5. Click "Render Video"
+6. Video saved to `videos/` folder
+
+**Phase 4: Multi-Language Subtitles**
+1. Select SRT file (or use one from Phase 3)
+2. Choose target languages
+3. Click "Translate to All Languages"
+4. Upload all SRT files to YouTube for multi-language support
+
+## 🏗️ Architecture
+
+### Modular Design
+
+The codebase is split into logical modules:
+
+**Core Logic Modules** (`story_illustrator/core/`):
+- Each phase has its own module with focused responsibility
+- Clean interfaces with logger injection
+- No UI dependencies - pure business logic
+- Easily testable and reusable
+
+**Utility Modules** (`story_illustrator/utils/`):
+- Configuration management with auto-save
+- Shared helpers and constants
+
+**Main Application** (`story_illustrator_v3.py`):
+- Pure UI code using Tkinter
+- Orchestrates modules
+- Event handling and threading
+- ~650 lines vs 1460 in monolithic version
+
+### Key Design Patterns
+
+1. **Separation of Concerns**: UI completely separated from logic
+2. **Dependency Injection**: Loggers injected for flexibility
+3. **Project-Based Workflow**: All work saved and resumable
+4. **Threaded Operations**: Long-running tasks don't block UI
+5. **Error Handling**: Comprehensive logging and user feedback
+
+## 🔧 Configuration
+
+Config is stored in `story_illustrator_v2_config.json`:
+
+```json
+{
+  "openai_api_key": "sk-...",
+  "phase1_prompt": "...",
+  "last_project": "My_Story_20251030_123456"
+}
+```
+
+Projects are stored in `projects/`:
+
+```json
+{
+  "name": "My_Story_20251030_123456",
+  "created": "2025-10-30T12:34:56",
+  "sections": [
+    {
+      "title": "The Awakening",
+      "text": "Full section text...",
+      "folder": "story_images/section_01_The_Awakening"
+    }
+  ]
+}
+```
+
+## 💡 Tips & Best Practices
+
+### For Story Chunking
+- **API Mode**: Fast, reliable, cheap (~$0.001 per story)
+- **Manual Mode**: Use if API has issues or for more control
+
+### For Image Generation
+- Use delays of 120-180 seconds for ChatGPT to generate images
+- Test with 1-2 sections first before running full automation
+- Keep browser window focused during automation
+
+### For Video Rendering
+- **Audio Compression**: Automatic for files >25 MB (Whisper limit)
+- **Subtitles**: Currently disabled in video, but SRT files generated for YouTube
+- **Music Volume**: Default 30% - adjust as needed
+
+### For Multi-Language SRT
+- Cost: ~$0.002 for 10 languages (GPT-4o-mini is very cheap)
+- Upload all SRT files to YouTube for automatic language selection
+- Edit translations in YouTube Studio if needed
+
+## 🐛 Known Issues
+
+### Subtitle Burning (Windows)
+**Issue**: FFmpeg's `subtitles` filter in `filter_complex` fails with non-ASCII paths on Windows (even with workarounds).
+
+**Workaround**: SRT files are generated but not burned into video. Upload them separately to YouTube.
+
+**Future Fix**: Two-pass rendering approach planned.
+
+### API Chunking Timeout
+**Issue**: Very large stories (>100K characters) may timeout.
+
+**Workaround**: Split story into smaller parts or use manual mode.
+
+## 📊 Performance
+
+| Operation | Time | Cost |
+|-----------|------|------|
+| API Chunking (60K chars) | 20-60s | ~$0.002 |
+| Image Generation (4 images) | ~10 min | Free (ChatGPT) |
+| Video Rendering (4 images, 20s) | 30-60s | Free |
+| SRT Generation (60 min audio) | 30-90s | ~$0.36 |
+| Multi-Language SRT (10 langs) | 60-120s | ~$0.002 |
+
+## 🔄 Migration Guide
+
+### From V2 to V3
+
+V3 is a complete rewrite with clean architecture:
+
+**What's the Same:**
+- All features work identically
+- Projects are compatible
+- UI layout is similar
+
+**What's Different:**
+- Codebase is modular and clean
+- Easier to understand and modify
+- Better error handling
+- More maintainable
+
+**Migration:**
+```bash
+# Your existing projects and config work with V3
+python story_illustrator_v3.py
+
+# V2 still works if needed
+python story_illustrator_v2.py
+```
+
+## 🛠️ Development
+
+### Adding New Features
+
+**Example: Add new TTS backend**
+
+1. Update `story_illustrator/core/tts_generator.py`:
+```python
+def generate_with_new_backend(self, text, output_path):
+    # Implementation
+    pass
+```
+
+2. Update main app UI:
+```python
+ttk.Button(frame, text="Generate TTS",
+           command=self.generate_tts).pack()
+```
+
+3. Connect in main app:
+```python
+from story_illustrator.core.tts_generator import TTSGenerator
+
+tts = TTSGenerator(backend='kokoro')
+tts.generate(section['text'], output_path)
+```
+
+### Code Style
+
+- **Functions**: Descriptive names, single responsibility
+- **Classes**: Clear interfaces, dependency injection
+- **Comments**: Explain why, not what
+- **Logging**: All operations logged with levels (INFO, SUCCESS, ERROR, DEBUG)
+
+## 📝 Changelog
+
+### V3.0.0 (2025-10-30)
+- ✨ Complete modular rewrite
+- ✨ API-based story chunking
+- ✨ Project save/load system
+- ✨ Improved error logging
+- ✨ Multi-language SRT translation
+- 🐛 Fixed FFmpeg bracket stripping bug
+- 🐛 Fixed API timeout issues
+- 📚 Comprehensive documentation
+
+### V2.0.0 (Previous)
+- Initial monolithic version
+- All 4 phases implemented
+- PyAutoGUI automation
+- FFmpeg video rendering
+
+## 🤝 Contributing
+
+Contributions welcome! The modular structure makes it easy:
+
+1. Choose a module to improve
+2. Write clean, documented code
+3. Test thoroughly
+4. Submit with clear description
+
+## 📄 License
+
+This project is provided as-is for educational and creative purposes.
+
+## 🙏 Credits
+
+- **FFmpeg**: Video processing
+- **OpenAI**: GPT-4o-mini for chunking/translation, Whisper for SRT
+- **PyAutoGUI**: Browser automation
+
+## 📞 Support
+
+For issues or questions:
+1. Check "Known Issues" section
+2. Review log output for errors
+3. Ensure all dependencies installed
+4. Test with simple story first
+
+---
+
+**Built with clean code principles • Easy to understand • Easy to extend**

@@ -1,0 +1,14 @@
+{
+  "commands": [
+    "go on"
+  ],
+  "interval": 60,
+  "typing_speed": 0,
+  "randomize": false,
+  "random_delay": false,
+  "btc_random": true,
+  "btc_mode": "last_digit",
+  "loop_mode": "infinite",
+  "loop_count": 10,
+  "startup_delay": 10
+}

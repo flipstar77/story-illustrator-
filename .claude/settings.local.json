@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(pip install:*)",
+      "Bash(python auto_typer.py)",
+      "Bash(timeout 3 python -c \"import pyautogui; print(''PyAutoGUI working!'')\")",
+      "Bash(tasklist)",
+      "Bash(findstr:*)",
+      "Bash(python:*)",
+      "Bash(taskkill:*)",
+      "Bash(playwright install chromium)",
+      "Bash(playwright install firefox)",
+      "Bash(start:*)",
+      "Bash(netstat:*)",
+      "Bash(powershell:*)",
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(del nul)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

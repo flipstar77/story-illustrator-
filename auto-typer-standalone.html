@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Typer Controller</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #ffffff;
+        }
+        .container {
+            background: #2d2d2d;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #4ec9b0;
+            margin-top: 0;
+        }
+        .control-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #9cdcfe;
+            font-weight: 500;
+        }
+        input[type="text"], input[type="number"], textarea {
+            width: 100%;
+            padding: 10px;
+            background: #1e1e1e;
+            border: 1px solid #3e3e3e;
+            border-radius: 5px;
+            color: #ffffff;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 100px;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px 10px 10px 0;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        .start-btn {
+            background: #4ec9b0;
+            color: #000;
+        }
+        .start-btn:hover {
+            background: #6fdfcc;
+        }
+        .stop-btn {
+            background: #f48771;
+            color: #000;
+        }
+        .stop-btn:hover {
+            background: #ff9b87;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: 500;
+        }
+        .status.running {
+            background: #2d4a2d;
+            border: 1px solid #4ec9b0;
+            color: #4ec9b0;
+        }
+        .status.stopped {
+            background: #4a2d2d;
+            border: 1px solid #f48771;
+            color: #f48771;
+        }
+        .log {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+            border: 1px solid #3e3e3e;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 3px 0;
+        }
+        .log-entry.success {
+            color: #4ec9b0;
+        }
+        .log-entry.error {
+            color: #f48771;
+        }
+        .log-entry.info {
+            color: #9cdcfe;
+        }
+        .info-box {
+            background: #2d3a4a;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #569cd6;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #569cd6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Auto-Typer Controller</h1>
+
+        <div class="info-box">
+            <h3>How to use:</h3>
+            <ol>
+                <li>Open your target website in another tab</li>
+                <li>Configure commands and interval below</li>
+                <li>Click "Start Auto-Typer"</li>
+                <li>Switch to your target tab</li>
+                <li>Go AFK! The script will keep running</li>
+            </ol>
+        </div>
+
+        <div class="control-group">
+            <label for="commands">Commands (one per line):</label>
+            <textarea id="commands" placeholder="go on&#10;continue&#10;next">go on</textarea>
+        </div>
+
+        <div class="control-group">
+            <label for="interval">Interval (seconds):</label>
+            <input type="number" id="interval" value="5" min="1" max="3600">
+        </div>
+
+        <div class="control-group">
+            <label for="selector">Input Field Selector (advanced):</label>
+            <input type="text" id="selector" placeholder="Leave empty for auto-detect" value="">
+            <small style="color: #888;">Optional: CSS selector for the input field (e.g., "#chat-input", "textarea")</small>
+        </div>
+
+        <div>
+            <button class="start-btn" onclick="startAutoTyper()">Start Auto-Typer</button>
+            <button class="stop-btn" onclick="stopAutoTyper()">Stop Auto-Typer</button>
+        </div>
+
+        <div id="status" class="status stopped">
+            Status: <span id="statusText">Stopped</span>
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry info">Ready to start...</div>
+        </div>
+    </div>
+
+    <script>
+        let isRunning = false;
+        let intervalId = null;
+        let commandIndex = 0;
+        let targetWindow = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+
+            // Keep only last 50 entries
+            while (logDiv.children.length > 50) {
+                logDiv.removeChild(logDiv.firstChild);
+            }
+        }
+
+        function updateStatus(running) {
+            const statusDiv = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+
+            if (running) {
+                statusDiv.className = 'status running';
+                statusText.textContent = 'Running';
+            } else {
+                statusDiv.className = 'status stopped';
+                statusText.textContent = 'Stopped';
+            }
+        }
+
+        function getInputField(targetDoc, customSelector) {
+            if (customSelector) {
+                const field = targetDoc.querySelector(customSelector);
+                if (field) return field;
+            }
+
+            // Try common selectors
+            const selectors = [
+                'textarea',
+                'input[type="text"]',
+                '[contenteditable="true"]',
+                '#prompt-textarea',
+                '.chat-input',
+                '[role="textbox"]'
+            ];
+
+            for (let selector of selectors) {
+                const field = targetDoc.querySelector(selector);
+                if (field) return field;
+            }
+
+            return null;
+        }
+
+        async function typeInOtherTab(text) {
+            // Use browser extension APIs if available (for Chrome/Firefox extensions)
+            // Otherwise, instruct user to use AutoHotkey or the bookmarklet version
+
+            log(`Would type: "${text}" - Use AutoHotkey version for cross-tab typing`, 'info');
+
+            // This is a limitation - JavaScript can't type into other tabs due to security
+            // Show notification instead
+            if (Notification.permission === "granted") {
+                new Notification('Auto-Typer Action', {
+                    body: `Type: ${text}`,
+                    icon: '🤖'
+                });
+            }
+        }
+
+        async function executeCommand() {
+            const commandsText = document.getElementById('commands').value;
+            const commands = commandsText.split('\n').filter(cmd => cmd.trim() !== '');
+
+            if (commands.length === 0) {
+                log('No commands configured!', 'error');
+                stopAutoTyper();
+                return;
+            }
+
+            const command = commands[commandIndex % commands.length];
+            log(`Executing: "${command}"`, 'success');
+
+            await typeInOtherTab(command);
+
+            commandIndex++;
+        }
+
+        function startAutoTyper() {
+            if (isRunning) {
+                log('Already running!', 'error');
+                return;
+            }
+
+            const interval = parseInt(document.getElementById('interval').value);
+            if (interval < 1) {
+                log('Interval must be at least 1 second!', 'error');
+                return;
+            }
+
+            // Request notification permission
+            if (Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+
+            isRunning = true;
+            commandIndex = 0;
+            updateStatus(true);
+            log('Auto-typer started!', 'success');
+            log(`Interval: ${interval} seconds`, 'info');
+
+            // Execute immediately
+            executeCommand();
+
+            // Then set interval
+            intervalId = setInterval(executeCommand, interval * 1000);
+        }
+
+        function stopAutoTyper() {
+            if (!isRunning) {
+                log('Not running!', 'error');
+                return;
+            }
+
+            isRunning = false;
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            updateStatus(false);
+            log('Auto-typer stopped!', 'error');
+        }
+
+        // Prevent page from being unloaded accidentally
+        window.addEventListener('beforeunload', (e) => {
+            if (isRunning) {
+                e.preventDefault();
+                e.returnValue = '';
+                return 'Auto-typer is still running. Are you sure you want to leave?';
+            }
+        });
+
+        // Keep tab alive
+        setInterval(() => {
+            if (isRunning) {
+                console.log('Keep-alive ping');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

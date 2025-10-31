@@ -1,0 +1,8 @@
+# Core dependencies
+openai>=1.0.0
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+httpx>=0.24.0
+
+# Optional: For local TTS (not yet implemented in UI)
+# kokoro-onnx>=0.1.0
