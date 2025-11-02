@@ -1,6 +1,6 @@
 # Story Illustrator V3
 
-A complete workflow tool for creating illustrated story videos with automated image generation, video rendering, and multi-language subtitles.
+A complete workflow tool for creating illustrated story videos with automated image generation, video rendering, multi-language subtitles, and AI-powered content creation.
 
 ## 🎯 Features
 
@@ -10,11 +10,13 @@ A complete workflow tool for creating illustrated story videos with automated im
 - Parses sections and creates folder structure
 - Auto-saves projects for resuming later
 
-### Phase 2: Image Generation Automation
-- Automated prompts for each story section
-- PyAutoGUI-based browser automation
-- Configurable delays and image counts
-- AFK-safe operation
+### Phase 2: Image Generation
+- **Browser Automation** (Legacy): PyAutoGUI-based automation for ChatGPT
+- **ComfyUI Integration** (NEW): Local SDXL image generation via ComfyUI API
+  - Automated workflow execution
+  - Text overlay support (titles + data points)
+  - Professional slideshow image generation
+  - No browser automation needed
 
 ### Phase 3: Video Production
 - FFmpeg-based video rendering with customizable settings
@@ -24,6 +26,7 @@ A complete workflow tool for creating illustrated story videos with automated im
   - FPS (15-60)
   - Music volume control
 - Voiceover + background music mixing
+- **Chatterbox TTS Integration**: Local text-to-speech generation
 - **Audio compression** (auto-compress >25MB files for Whisper)
 - **SRT subtitle generation** via OpenAI Whisper API
 - Open videos folder and last video directly from UI
@@ -35,28 +38,69 @@ A complete workflow tool for creating illustrated story videos with automated im
 - Preserves timestamps and formatting
 - Perfect for YouTube multi-language captions
 
+### NEW: Actor Analysis & Carousel Videos
+- **Perplexity Research Integration**: Automated actor research via Perplexity API
+  - Filmography analysis
+  - Salary data extraction
+  - IMDB and Rotten Tomatoes ratings
+- **Movie Poster Downloads**: Automatic TMDB poster fetching with retry logic
+- **Enhanced Poster Generation**: Uniform sizing with ratings overlays
+  - IMDB score boxes
+  - Rotten Tomatoes score boxes
+  - Salary information
+- **Carousel Video Creation**: Professional filmography showcase videos
+  - Smooth scrolling animations
+  - Synchronized voiceover narration
+  - Background music integration
+
+### NEW: Slideshow Video Generator
+- **CSV-Driven Workflow**: Create slideshow videos from structured data
+- **ComfyUI + SDXL**: Automated image generation with text overlays
+- **Chatterbox TTS**: Narration generation for each slide
+- **FFmpeg Assembly**: Professional video compilation
+  - Semi-transparent overlay bars
+  - Centered title and data text
+  - Customizable slide durations
+
 ## 📁 Project Structure
 
 ```
 story_illustrator/
 ├── story_illustrator_v3.py          # Main application (clean, 650 lines)
 ├── story_illustrator_v2.py          # Legacy monolithic version (1460 lines)
+├── slideshow_generator.py           # NEW: Slideshow video generator
+├── create_carousel_video.py         # NEW: Actor carousel video creator
 ├── story_illustrator/               # Modular components
 │   ├── __init__.py
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── project_manager.py      # Project save/load (130 lines)
-│   │   ├── phase1_logic.py         # Story chunking (90 lines)
-│   │   ├── phase2_logic.py         # Image automation (160 lines)
-│   │   ├── phase3_logic.py         # Video rendering (280 lines)
-│   │   ├── phase4_logic.py         # SRT translation (150 lines)
-│   │   └── tts_generator.py        # TTS integration (ready for Kokoro)
+│   │   ├── project_manager.py      # Project save/load
+│   │   ├── phase1_logic.py         # Story chunking
+│   │   ├── phase2_logic.py         # Image automation
+│   │   ├── phase3_logic.py         # Video rendering
+│   │   ├── phase4_logic.py         # SRT translation
+│   │   └── tts_generator.py        # Chatterbox TTS integration
 │   └── utils/
 │       ├── __init__.py
-│       └── config.py                # Configuration management (50 lines)
+│       ├── config.py                # Configuration management
+│       ├── api_keys.py              # NEW: API key management (Perplexity, TMDB)
+│       ├── comfyui_client.py        # NEW: ComfyUI API client
+│       ├── slideshow_image_generator.py  # NEW: SDXL + text overlays
+│       ├── carousel_poster_enhancer.py   # NEW: Poster generation with ratings
+│       ├── movie_poster_downloader.py    # NEW: TMDB poster fetching
+│       └── perplexity_researcher.py      # NEW: Perplexity API research
+├── workflows/
+│   └── sdxl_slideshow.json          # NEW: ComfyUI SDXL workflow template
+├── examples/
+│   └── sample_slideshow.csv         # NEW: Sample slideshow data
 ├── projects/                         # Saved projects (auto-created)
 ├── story_images/                     # Section folders with images
-└── videos/                           # Rendered videos
+├── videos/                           # Rendered videos
+└── output/
+    └── actor_analysis/               # NEW: Actor research & carousel videos
+        ├── johnny_depp/
+        ├── tom_cruise/
+        └── ...
 ```
 
 ## 🚀 Installation
@@ -71,12 +115,35 @@ pip install -r requirements.txt
 pyautogui>=0.9.54
 pyperclip>=1.9.0
 openai>=1.0.0
+pandas>=2.0.0
+pillow>=10.0.0
+requests>=2.31.0
+websocket-client>=1.6.0
+torch>=2.0.0  # For Chatterbox TTS (optional)
+torchaudio>=2.0.0  # For Chatterbox TTS (optional)
 ```
 
 ### External Dependencies
 - **FFmpeg**: Required for video rendering
   - Download: https://ffmpeg.org/download.html
-  - Add to PATH
+  - Add to PATH or use: `C:\Users\Tobias\ffmpeg-8.0-essentials_build\bin\ffmpeg.exe`
+
+### Optional: ComfyUI Integration
+- **ComfyUI**: For local SDXL image generation
+  - Installed at: `C:\Users\Tobias\ComfyUI\`
+  - Start server: `cd C:\Users\Tobias\ComfyUI && venv\Scripts\python.exe main.py`
+  - Access UI: http://127.0.0.1:8188
+  - Required model: `sd_xl_base_1.0.safetensors` (6.5GB)
+
+### Optional: Chatterbox TTS
+- **PyTorch + TorchAudio**: For local text-to-speech
+  - Requires GPU with CUDA support (or CPU fallback)
+  - Model downloads automatically on first use
+
+### API Keys Required
+- **OpenAI API Key**: For GPT-4o-mini (chunking, translation) and Whisper (SRT)
+- **Perplexity API Key**: For actor research (optional)
+- **TMDB API Key**: For movie poster downloads (optional)
 
 ## 📖 Usage
 

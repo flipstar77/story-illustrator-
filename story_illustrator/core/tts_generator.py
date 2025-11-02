@@ -1,182 +1,205 @@
-"""Text-to-Speech generation for voiceovers"""
+"""Text-to-Speech generation using Chatterbox TTS"""
 from pathlib import Path
-import subprocess
+from typing import Optional, Union
 
 
 class TTSGenerator:
-    """Handles text-to-speech generation for voiceovers"""
+    """Handles text-to-speech generation with Chatterbox"""
 
-    def __init__(self, backend='kokoro', logger=None):
+    def __init__(self, logger=None, device=None):
         """
         Args:
-            backend: TTS backend to use ('kokoro', 'chatterbox', 'elevenlabs')
             logger: Callable that takes (message, level) for logging
+            device: Device to use ('cuda', 'cpu', or None for auto-detect)
         """
-        self.backend = backend
         self.logger = logger or self._default_logger
+        self.model = None
+        self.device = device or self._auto_detect_device()
+        self.torch = None
+        self.ta = None
 
     @staticmethod
     def _default_logger(message, level='INFO'):
         """Default logger that prints to console"""
         print(f"[{level}] {message}")
 
-    def check_kokoro_available(self):
-        """Check if Kokoro library is installed"""
+    def _auto_detect_device(self):
+        """Auto-detect best available device"""
         try:
-            import kokoro
-            return True
-        except ImportError:
-            return False
+            import torch
+            self.torch = torch
+            if torch.cuda.is_available():
+                return "cuda"
+            elif torch.backends.mps.is_available():
+                return "mps"
+            else:
+                return "cpu"
+        except:
+            return "cpu"
 
-    def generate_with_kokoro(self, text, output_path, voice='af_bella', speed=1.0):
+    def load_model(self):
+        """Load Chatterbox TTS model (lazy loading)"""
+        if self.model is None:
+            try:
+                self.logger(f"🔄 Loading Chatterbox TTS model on {self.device}...", "INFO")
+                from chatterbox.tts import ChatterboxTTS
+                self.model = ChatterboxTTS.from_pretrained(device=self.device)
+                self.logger("✅ Chatterbox TTS model loaded successfully!", "SUCCESS")
+            except Exception as e:
+                self.logger(f"❌ Failed to load Chatterbox TTS: {e}", "ERROR")
+                raise
+        return self.model
+
+    def generate_audio(self,
+                      text: str,
+                      output_path: Union[str, Path],
+                      audio_prompt_path: Optional[str] = None,
+                      exaggeration: float = 0.5,
+                      temperature: float = 0.8,
+                      cfg_weight: float = 0.5,
+                      min_p: float = 0.05,
+                      top_p: float = 1.0,
+                      repetition_penalty: float = 1.2) -> bool:
         """
-        Generate speech using Kokoro-82M library
+        Generate speech audio from text
 
         Args:
             text: Text to convert to speech
-            output_path: Path to save audio file
-            voice: Voice model to use
-            speed: Speech speed multiplier
+            output_path: Path to save the audio file (.wav)
+            audio_prompt_path: Optional reference audio for voice cloning
+            exaggeration: Voice exaggeration (0.25-2.0, default 0.5)
+            temperature: Sampling temperature (0.05-5.0, default 0.8)
+            cfg_weight: Classifier-free guidance weight (0.0-1.0, default 0.5)
+            min_p: Min-p sampling threshold (0.0-1.0, default 0.05)
+            top_p: Top-p sampling threshold (0.0-1.0, default 1.0)
+            repetition_penalty: Repetition penalty (1.0-2.0, default 1.2)
 
         Returns:
-            Path to generated audio file, or None if failed
+            True if successful, False otherwise
         """
         try:
-            import kokoro
-            import soundfile as sf
+            # Load model if not already loaded
+            model = self.load_model()
 
-            self.logger(f"🎤 Generating voiceover with Kokoro ({voice})...", "INFO")
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            self.logger(f"🎙️ Generating speech for text: {text[:50]}...", "INFO")
 
             # Generate audio
-            audio_data, sample_rate = kokoro.generate(
-                text=text,
-                voice=voice,
-                speed=speed
+            wav = model.generate(
+                text,
+                audio_prompt_path=audio_prompt_path,
+                exaggeration=exaggeration,
+                temperature=temperature,
+                cfg_weight=cfg_weight,
+                min_p=min_p,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
             )
 
-            # Save to file
-            output_path = Path(output_path)
-            sf.write(str(output_path), audio_data, sample_rate)
+            # Save audio
+            if self.ta is None:
+                import torchaudio as ta
+                self.ta = ta
+            self.ta.save(str(output_path), wav, model.sr)
 
-            self.logger(f"✅ Voiceover generated: {output_path.name}", "SUCCESS")
+            self.logger(f"✅ Audio saved to: {output_path}", "SUCCESS")
+            return True
+
+        except Exception as e:
+            self.logger(f"❌ TTS generation failed: {e}", "ERROR")
+            return False
+
+    def generate_narration_for_sections(self,
+                                       sections: list,
+                                       output_dir: Union[str, Path],
+                                       combine: bool = True,
+                                       audio_prompt_path: Optional[str] = None,
+                                       **tts_params) -> Optional[Path]:
+        """
+        Generate narration audio for multiple story sections
+
+        Args:
+            sections: List of text sections to narrate
+            output_dir: Directory to save audio files
+            combine: If True, combine all sections into one audio file
+            audio_prompt_path: Optional reference audio for voice cloning
+            **tts_params: Additional parameters for TTS generation
+
+        Returns:
+            Path to combined audio file if combine=True, else None
+        """
+        try:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            audio_files = []
+
+            # Generate audio for each section
+            for i, section_text in enumerate(sections, 1):
+                section_path = output_dir / f"section_{i:03d}.wav"
+
+                self.logger(f"📝 Generating audio for section {i}/{len(sections)}", "INFO")
+
+                success = self.generate_audio(
+                    text=section_text,
+                    output_path=section_path,
+                    audio_prompt_path=audio_prompt_path,
+                    **tts_params
+                )
+
+                if success:
+                    audio_files.append(section_path)
+                else:
+                    self.logger(f"⚠️ Failed to generate audio for section {i}", "WARNING")
+
+            if not audio_files:
+                self.logger("❌ No audio files generated", "ERROR")
+                return None
+
+            # Combine audio files if requested
+            if combine and len(audio_files) > 1:
+                return self._combine_audio_files(audio_files, output_dir / "combined_narration.wav")
+            elif combine and len(audio_files) == 1:
+                return audio_files[0]
+            else:
+                self.logger(f"✅ Generated {len(audio_files)} audio files", "SUCCESS")
+                return None
+
+        except Exception as e:
+            self.logger(f"❌ Narration generation failed: {e}", "ERROR")
+            return None
+
+    def _combine_audio_files(self, audio_files: list, output_path: Path) -> Optional[Path]:
+        """Combine multiple audio files into one"""
+        try:
+            self.logger(f"🔗 Combining {len(audio_files)} audio files...", "INFO")
+
+            # Load all audio files
+            waveforms = []
+            sample_rate = None
+
+            for audio_file in audio_files:
+                waveform, sr = ta.load(str(audio_file))
+                if sample_rate is None:
+                    sample_rate = sr
+                elif sr != sample_rate:
+                    # Resample if necessary
+                    resampler = ta.transforms.Resample(sr, sample_rate)
+                    waveform = resampler(waveform)
+
+                waveforms.append(waveform)
+
+            # Concatenate waveforms
+            combined = torch.cat(waveforms, dim=1)
+
+            # Save combined audio
+            ta.save(str(output_path), combined, sample_rate)
+
+            self.logger(f"✅ Combined audio saved to: {output_path}", "SUCCESS")
             return output_path
 
         except Exception as e:
-            self.logger(f"❌ Kokoro generation failed: {e}", "ERROR")
+            self.logger(f"❌ Audio combination failed: {e}", "ERROR")
             return None
-
-    def generate_with_chatterbox(self, text, output_path, chatterbox_path=None):
-        """
-        Generate speech using Chatterbox CLI
-
-        Args:
-            text: Text to convert to speech
-            output_path: Path to save audio file
-            chatterbox_path: Path to Chatterbox executable
-
-        Returns:
-            Path to generated audio file, or None if failed
-        """
-        try:
-            if chatterbox_path is None:
-                # Try common locations
-                possible_paths = [
-                    "chatterbox.exe",
-                    "C:\\Program Files\\Chatterbox\\chatterbox.exe",
-                    "C:\\Program Files (x86)\\Chatterbox\\chatterbox.exe"
-                ]
-                for path in possible_paths:
-                    if Path(path).exists():
-                        chatterbox_path = path
-                        break
-
-            if not chatterbox_path or not Path(chatterbox_path).exists():
-                self.logger("❌ Chatterbox not found!", "ERROR")
-                return None
-
-            self.logger("🎤 Generating voiceover with Chatterbox...", "INFO")
-
-            # Write text to temp file
-            text_file = Path(output_path).with_suffix('.txt')
-            with open(text_file, 'w', encoding='utf-8') as f:
-                f.write(text)
-
-            # Run Chatterbox
-            cmd = [str(chatterbox_path), '--input', str(text_file), '--output', str(output_path)]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-            if result.returncode == 0 and Path(output_path).exists():
-                self.logger(f"✅ Voiceover generated: {Path(output_path).name}", "SUCCESS")
-                text_file.unlink()  # Clean up temp file
-                return Path(output_path)
-            else:
-                self.logger(f"❌ Chatterbox failed: {result.stderr}", "ERROR")
-                return None
-
-        except Exception as e:
-            self.logger(f"❌ Chatterbox generation failed: {e}", "ERROR")
-            return None
-
-    def generate(self, text, output_path, **kwargs):
-        """
-        Generate speech using configured backend
-
-        Args:
-            text: Text to convert to speech
-            output_path: Path to save audio file
-            **kwargs: Backend-specific options
-
-        Returns:
-            Path to generated audio file, or None if failed
-        """
-        if self.backend == 'kokoro':
-            return self.generate_with_kokoro(text, output_path, **kwargs)
-        elif self.backend == 'chatterbox':
-            return self.generate_with_chatterbox(text, output_path, **kwargs)
-        else:
-            self.logger(f"❌ Unknown TTS backend: {self.backend}", "ERROR")
-            return None
-
-    def generate_for_sections(self, sections, output_folder, voice='af_bella', speed=1.0):
-        """
-        Generate voiceovers for multiple sections
-
-        Args:
-            sections: List of section dicts with 'title' and 'text'
-            output_folder: Folder to save audio files
-            voice: Voice model to use (for Kokoro)
-            speed: Speech speed multiplier
-
-        Returns:
-            Dict mapping section index to audio file path
-        """
-        output_folder = Path(output_folder)
-        output_folder.mkdir(exist_ok=True)
-
-        results = {}
-
-        for i, section in enumerate(sections):
-            self.logger(f"📝 Section {i+1}/{len(sections)}: {section['title']}", "INFO")
-
-            # Generate filename
-            audio_file = output_folder / f"section_{i+1:02d}_voiceover.wav"
-
-            # Generate audio
-            result = self.generate(
-                text=section['text'],
-                output_path=audio_file,
-                voice=voice,
-                speed=speed
-            )
-
-            results[i] = result
-
-            if result:
-                self.logger(f"✅ Section {i+1} complete", "SUCCESS")
-            else:
-                self.logger(f"❌ Section {i+1} failed", "ERROR")
-
-        success_count = sum(1 for r in results.values() if r)
-        self.logger(f"🎉 Generated {success_count}/{len(sections)} voiceovers", "SUCCESS")
-
-        return results
