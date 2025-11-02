@@ -41,6 +41,12 @@ class CarouselVideoGenerator:
         if not poster_paths:
             raise ValueError("No poster paths provided")
 
+        # Convert all poster paths to Path objects (handles strings, Path objects, etc.)
+        poster_paths = [Path(str(p)) for p in poster_paths if p and str(p).strip()]
+
+        if not poster_paths:
+            raise ValueError("No valid poster paths after filtering")
+
         # First pass: find the dimensions to use (normalize all posters to same height)
         target_height = max_height
         poster_dimensions = []
@@ -230,7 +236,7 @@ class CarouselVideoGenerator:
             print(result.stderr[-1000:])
             return False
 
-    def create_carousel_from_posters(self, poster_paths, actor_name, output_path, force_regenerate=True):
+    def create_carousel_from_posters(self, poster_paths, actor_name, output_path, force_regenerate=True, voice_params=None):
         """
         Complete workflow: create carousel video from poster list
 
@@ -239,6 +245,7 @@ class CarouselVideoGenerator:
             actor_name: Actor name for overlay
             output_path: Where to save output video
             force_regenerate: If True, create new strip files with unique names
+            voice_params: Optional TTS parameters for narration (dict)
 
         Returns:
             True if successful, False otherwise

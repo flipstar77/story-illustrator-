@@ -272,7 +272,13 @@ class CarouselPosterEnhancer:
         enhanced_posters = []
 
         for idx, row in df.iterrows():
-            original_poster = Path(row[poster_column])
+            # Handle NaN or missing poster paths
+            poster_path_value = row.get(poster_column, '')
+            if pd.isna(poster_path_value) or not str(poster_path_value).strip():
+                print(f"  [SKIP] No poster path: {row['title']}")
+                continue
+
+            original_poster = Path(str(poster_path_value))
 
             if not original_poster.exists():
                 print(f"  [SKIP] Missing: {row['title']}")
