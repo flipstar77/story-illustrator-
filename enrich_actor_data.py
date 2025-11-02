@@ -80,12 +80,13 @@ def enrich_actor_filmography(actor_folder, regenerate_posters=True, regenerate_v
         title = row['title']
         year = row['year']
 
-        # Skip if already has all ratings
+        # Skip if already has all data
         has_imdb = pd.notna(row.get('imdb_rating')) and str(row['imdb_rating']).strip() != ''
         has_rt = pd.notna(row.get('rotten_tomatoes')) and str(row['rotten_tomatoes']).strip() != ''
         has_budget = pd.notna(row.get('budget')) and str(row['budget']).strip() != ''
+        has_salary = pd.notna(row.get('salary')) and str(row['salary']).strip() != ''
 
-        if has_imdb and has_rt and has_budget:
+        if has_imdb and has_rt and has_budget and has_salary:
             print(f"[{idx+1}/{len(df)}] {title} ({year}) - Already enriched [OK]")
             enriched_count += 1
             continue
@@ -98,11 +99,13 @@ def enrich_actor_filmography(actor_folder, regenerate_posters=True, regenerate_v
 1. IMDB rating (format: "7.8" or "N/A")
 2. Rotten Tomatoes score (format: "85%" or "N/A")
 3. Production budget (format: "$50 million" or "N/A")
+4. {actor_name}'s salary/paycheck for this role (format: "$10 million" or "N/A")
 
 Format your response EXACTLY as:
 IMDB: 7.8
 RT: 85%
 Budget: $50 million
+Salary: $10 million
 
 If data is not available, use "N/A" for that field."""
 
@@ -114,6 +117,7 @@ If data is not available, use "N/A" for that field."""
             imdb = ""
             rt = ""
             budget = ""
+            salary = ""
 
             for line in response.split('\n'):
                 line = line.strip()
@@ -129,6 +133,10 @@ If data is not available, use "N/A" for that field."""
                     budget = line.replace('Budget:', '').strip()
                     if budget.lower() == 'n/a':
                         budget = ''
+                elif line.startswith('Salary:'):
+                    salary = line.replace('Salary:', '').strip()
+                    if salary.lower() == 'n/a':
+                        salary = ''
 
             # Update dataframe
             if imdb:
@@ -140,6 +148,9 @@ If data is not available, use "N/A" for that field."""
             if budget:
                 df.at[idx, 'budget'] = budget
                 print(f"  [OK] Budget: {budget}")
+            if salary:
+                df.at[idx, 'salary'] = salary
+                print(f"  [OK] Salary: {salary}")
 
             # Save progress after each movie
             df.to_csv(csv_path, index=False)
@@ -185,14 +196,23 @@ If data is not available, use "N/A" for that field."""
 
         output_video = actor_path / f"carousel_video_enriched.mp4"
 
+        # Get list of all enhanced poster paths (sorted by filename which includes year)
+        enhanced_poster_paths = sorted(enhanced_posters_dir.glob("*.jpg"))
+
+        print(f"[OK] Found {len(enhanced_poster_paths)} enhanced posters")
+
         generator = CarouselVideoGenerator()
-        video_path = generator.create_carousel_from_csv(
-            csv_path=csv_path,
-            enhanced_posters_dir=enhanced_posters_dir,
-            output_path=output_video
+        success = generator.create_carousel_from_posters(
+            poster_paths=enhanced_poster_paths,
+            actor_name=actor_name,
+            output_path=output_video,
+            force_regenerate=True
         )
 
-        print(f"\n[OK] Carousel video created: {video_path}")
+        if success:
+            print(f"\n[OK] Carousel video created: {output_video}")
+        else:
+            print(f"\n[ERROR] Failed to create carousel video")
 
     print("\n" + "=" * 70)
     print(f"[COMPLETE] {actor_name.upper()} ENRICHMENT FINISHED")

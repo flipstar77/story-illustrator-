@@ -90,19 +90,53 @@ class CarouselPosterEnhancer:
         return overlay
 
     def _draw_title_with_shadow(self, draw, title, year, y_offset, fonts):
-        """Draw movie title with shadow effect"""
-        title_text = f"{title}"
+        """Draw movie title with shadow effect, breaking long titles into 2 lines"""
         year_text = f"({year})"
 
-        # Draw title shadow
-        draw.text((32, y_offset + 2), title_text, fill='#000000', font=fonts['title'])
-        draw.text((30, y_offset), title_text, fill='#FFFFFF', font=fonts['title'])
+        # Check if title is too long (threshold: 30 characters)
+        max_width = 1920  # Max width for title text (poster width - margins)
+        title_bbox = draw.textbbox((0, 0), title, font=fonts['title'])
+        title_width = title_bbox[2] - title_bbox[0]
 
-        # Year next to title
-        title_bbox = draw.textbbox((30, y_offset), title_text, font=fonts['title'])
-        year_x = title_bbox[2] + 15
-        draw.text((year_x + 2, y_offset + 8), year_text, fill='#000000', font=fonts['label'])
-        draw.text((year_x, y_offset + 6), year_text, fill='#888888', font=fonts['label'])
+        if len(title) > 30 or title_width > max_width:
+            # Break title into 2 lines at a logical point
+            words = title.split()
+            mid_point = len(words) // 2
+
+            # Try to split at a natural break (conjunctions, prepositions)
+            split_words = ['and', 'the', 'of', 'in', 'or', '&', 'vs', 'vs.']
+            for i, word in enumerate(words):
+                if word.lower() in split_words and abs(i - mid_point) <= 2:
+                    mid_point = i
+                    break
+
+            line1 = ' '.join(words[:mid_point])
+            line2 = ' '.join(words[mid_point:])
+
+            # Draw line 1
+            draw.text((32, y_offset + 2), line1, fill='#000000', font=fonts['title'])
+            draw.text((30, y_offset), line1, fill='#FFFFFF', font=fonts['title'])
+
+            # Draw line 2
+            line_height = 75  # Spacing between lines
+            draw.text((32, y_offset + line_height + 2), line2, fill='#000000', font=fonts['title'])
+            draw.text((30, y_offset + line_height), line2, fill='#FFFFFF', font=fonts['title'])
+
+            # Year next to second line
+            line2_bbox = draw.textbbox((30, y_offset + line_height), line2, font=fonts['title'])
+            year_x = line2_bbox[2] + 15
+            draw.text((year_x + 2, y_offset + line_height + 8), year_text, fill='#000000', font=fonts['label'])
+            draw.text((year_x, y_offset + line_height + 6), year_text, fill='#888888', font=fonts['label'])
+        else:
+            # Single line title
+            draw.text((32, y_offset + 2), title, fill='#000000', font=fonts['title'])
+            draw.text((30, y_offset), title, fill='#FFFFFF', font=fonts['title'])
+
+            # Year next to title
+            title_bbox = draw.textbbox((30, y_offset), title, font=fonts['title'])
+            year_x = title_bbox[2] + 15
+            draw.text((year_x + 2, y_offset + 8), year_text, fill='#000000', font=fonts['label'])
+            draw.text((year_x, y_offset + 6), year_text, fill='#888888', font=fonts['label'])
 
     def _draw_info_box(self, draw, label, value, x_pos, y_pos, color, fonts):
         """Draw an info box with border and text"""

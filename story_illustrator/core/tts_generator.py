@@ -41,12 +41,12 @@ class TTSGenerator:
         """Load Chatterbox TTS model (lazy loading)"""
         if self.model is None:
             try:
-                self.logger(f"🔄 Loading Chatterbox TTS model on {self.device}...", "INFO")
+                self.logger(f"Loading Chatterbox TTS model on {self.device}...", "INFO")
                 from chatterbox.tts import ChatterboxTTS
                 self.model = ChatterboxTTS.from_pretrained(device=self.device)
-                self.logger("✅ Chatterbox TTS model loaded successfully!", "SUCCESS")
+                self.logger("Chatterbox TTS model loaded successfully!", "SUCCESS")
             except Exception as e:
-                self.logger(f"❌ Failed to load Chatterbox TTS: {e}", "ERROR")
+                self.logger(f"Failed to load Chatterbox TTS: {e}", "ERROR")
                 raise
         return self.model
 
@@ -84,7 +84,7 @@ class TTSGenerator:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            self.logger(f"🎙️ Generating speech for text: {text[:50]}...", "INFO")
+            self.logger(f"Generating speech for text: {text[:50]}...", "INFO")
 
             # Generate audio
             wav = model.generate(
@@ -98,17 +98,21 @@ class TTSGenerator:
                 repetition_penalty=repetition_penalty,
             )
 
-            # Save audio
-            if self.ta is None:
-                import torchaudio as ta
-                self.ta = ta
-            self.ta.save(str(output_path), wav, model.sr)
+            # Save audio using scipy to avoid torchcodec requirement
+            import scipy.io.wavfile as wavfile
+            import numpy as np
 
-            self.logger(f"✅ Audio saved to: {output_path}", "SUCCESS")
+            # Convert tensor to numpy and save
+            wav_np = wav.squeeze().cpu().numpy()
+            # Normalize to int16 range
+            wav_np = (wav_np * 32767).astype(np.int16)
+            wavfile.write(str(output_path), model.sr, wav_np)
+
+            self.logger(f"Audio saved to: {output_path}", "SUCCESS")
             return True
 
         except Exception as e:
-            self.logger(f"❌ TTS generation failed: {e}", "ERROR")
+            self.logger(f"TTS generation failed: {e}", "ERROR")
             return False
 
     def generate_narration_for_sections(self,
@@ -140,7 +144,7 @@ class TTSGenerator:
             for i, section_text in enumerate(sections, 1):
                 section_path = output_dir / f"section_{i:03d}.wav"
 
-                self.logger(f"📝 Generating audio for section {i}/{len(sections)}", "INFO")
+                self.logger(f"Generating audio for section {i}/{len(sections)}", "INFO")
 
                 success = self.generate_audio(
                     text=section_text,
@@ -152,10 +156,10 @@ class TTSGenerator:
                 if success:
                     audio_files.append(section_path)
                 else:
-                    self.logger(f"⚠️ Failed to generate audio for section {i}", "WARNING")
+                    self.logger(f"Failed to generate audio for section {i}", "WARNING")
 
             if not audio_files:
-                self.logger("❌ No audio files generated", "ERROR")
+                self.logger("No audio files generated", "ERROR")
                 return None
 
             # Combine audio files if requested
@@ -164,29 +168,40 @@ class TTSGenerator:
             elif combine and len(audio_files) == 1:
                 return audio_files[0]
             else:
-                self.logger(f"✅ Generated {len(audio_files)} audio files", "SUCCESS")
+                self.logger(f"Generated {len(audio_files)} audio files", "SUCCESS")
                 return None
 
         except Exception as e:
-            self.logger(f"❌ Narration generation failed: {e}", "ERROR")
+            self.logger(f"Narration generation failed: {e}", "ERROR")
             return None
 
     def _combine_audio_files(self, audio_files: list, output_path: Path) -> Optional[Path]:
         """Combine multiple audio files into one"""
         try:
-            self.logger(f"🔗 Combining {len(audio_files)} audio files...", "INFO")
+            self.logger(f"Combining {len(audio_files)} audio files...", "INFO")
 
             # Load all audio files
+            if self.ta is None:
+                import torchaudio as ta
+                self.ta = ta
+
             waveforms = []
             sample_rate = None
 
             for audio_file in audio_files:
-                waveform, sr = ta.load(str(audio_file))
+                # Load using scipy to avoid torchcodec issues
+                import scipy.io.wavfile as wavfile
+                import numpy as np
+
+                sr, wav_np = wavfile.read(str(audio_file))
+                # Convert numpy to tensor and normalize
+                waveform = self.torch.from_numpy(wav_np.astype(np.float32) / 32767.0).unsqueeze(0)
+
                 if sample_rate is None:
                     sample_rate = sr
                 elif sr != sample_rate:
                     # Resample if necessary
-                    resampler = ta.transforms.Resample(sr, sample_rate)
+                    resampler = self.ta.transforms.Resample(sr, sample_rate)
                     waveform = resampler(waveform)
 
                 waveforms.append(waveform)
@@ -194,12 +209,19 @@ class TTSGenerator:
             # Concatenate waveforms
             combined = torch.cat(waveforms, dim=1)
 
-            # Save combined audio
-            ta.save(str(output_path), combined, sample_rate)
+            # Save combined audio using scipy
+            import scipy.io.wavfile as wavfile
+            import numpy as np
 
-            self.logger(f"✅ Combined audio saved to: {output_path}", "SUCCESS")
+            # Convert tensor to numpy and save
+            combined_np = combined.squeeze().cpu().numpy()
+            # Normalize to int16 range
+            combined_np = (combined_np * 32767).astype(np.int16)
+            wavfile.write(str(output_path), sample_rate, combined_np)
+
+            self.logger(f"Combined audio saved to: {output_path}", "SUCCESS")
             return output_path
 
         except Exception as e:
-            self.logger(f"❌ Audio combination failed: {e}", "ERROR")
+            self.logger(f"Audio combination failed: {e}", "ERROR")
             return None

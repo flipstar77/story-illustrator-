@@ -38,20 +38,40 @@ A complete workflow tool for creating illustrated story videos with automated im
 - Preserves timestamps and formatting
 - Perfect for YouTube multi-language captions
 
-### NEW: Actor Analysis & Carousel Videos
-- **Perplexity Research Integration**: Automated actor research via Perplexity API
-  - Filmography analysis
-  - Salary data extraction
-  - IMDB and Rotten Tomatoes ratings
-- **Movie Poster Downloads**: Automatic TMDB poster fetching with retry logic
-- **Enhanced Poster Generation**: Uniform sizing with ratings overlays
-  - IMDB score boxes
-  - Rotten Tomatoes score boxes
-  - Salary information
-- **Carousel Video Creation**: Professional filmography showcase videos
-  - Smooth scrolling animations
-  - Synchronized voiceover narration
-  - Background music integration
+### NEW: Actor Carousel Video Generator
+**Automated social media content creation for actors & filmographies**
+
+- **Universal Actor Enrichment** (`enrich_actor_data.py`)
+  - Perplexity API research for any actor
+  - Automatic IMDB ratings, Rotten Tomatoes scores, production budgets, and **actor salaries**
+  - TMDB poster downloads with retry logic
+  - Auto-saves progress after each movie
+  - Works for any actor - just provide their folder name
+
+- **Professional Poster Overlays** (`carousel_poster_enhancer.py`)
+  - Uniform 2000x3000px sizing for consistent scrolling
+  - **Smart title line-breaking** - automatically splits long titles at natural word breaks
+  - Color-coded data boxes: Character (blue), Budget (sky blue), Box Office (green), Salary (gold), IMDB (yellow), RT (red)
+  - Professional gradient overlays and shadows
+
+- **Carousel Video Generation** (`carousel_video_generator.py`)
+  - Smooth horizontal scrolling at 120 px/s (8.7s per poster)
+  - Top/bottom overlay bars with actor name and film count
+  - FFmpeg-based high-quality rendering
+  - Automatic timestamp-based file management
+
+- **TTS Narration System** (`tts_generator.py` + `narration_script_generator.py`)
+  - 8 professional voice presets (documentary, storyteller, news, dramatic, calm, energetic, professional, conversational)
+  - Voice cloning support using 10-15 second audio samples
+  - Synchronized timing calculations for carousel scroll
+  - Statistical summaries (intro/outro) with aggregate data
+  - Movie-by-movie narration with character names, ratings, and box office
+
+**Quick Start:**
+```bash
+python enrich_actor_data.py brad_pitt
+# Enriches all 49 Brad Pitt movies, generates enhanced posters, creates carousel video
+```
 
 ### NEW: Slideshow Video Generator
 - **CSV-Driven Workflow**: Create slideshow videos from structured data
@@ -68,8 +88,11 @@ A complete workflow tool for creating illustrated story videos with automated im
 story_illustrator/
 ├── story_illustrator_v3.py          # Main application (clean, 650 lines)
 ├── story_illustrator_v2.py          # Legacy monolithic version (1460 lines)
-├── slideshow_generator.py           # NEW: Slideshow video generator
-├── create_carousel_video.py         # NEW: Actor carousel video creator
+├── slideshow_generator.py           # Slideshow video generator
+├── create_carousel_video.py         # Actor carousel video creator
+├── enrich_actor_data.py             # Universal actor enrichment script
+├── test_tts_narration.py            # TTS audio generation test
+├── test_voices.py                   # Voice preset demonstration
 ├── story_illustrator/               # Modular components
 │   ├── __init__.py
 │   ├── core/
@@ -83,12 +106,15 @@ story_illustrator/
 │   └── utils/
 │       ├── __init__.py
 │       ├── config.py                # Configuration management
-│       ├── api_keys.py              # NEW: API key management (Perplexity, TMDB)
-│       ├── comfyui_client.py        # NEW: ComfyUI API client
-│       ├── slideshow_image_generator.py  # NEW: SDXL + text overlays
-│       ├── carousel_poster_enhancer.py   # NEW: Poster generation with ratings
-│       ├── movie_poster_downloader.py    # NEW: TMDB poster fetching
-│       └── perplexity_researcher.py      # NEW: Perplexity API research
+│       ├── api_keys.py              # API key management (Perplexity, TMDB)
+│       ├── comfyui_client.py        # ComfyUI API client
+│       ├── slideshow_image_generator.py  # SDXL + text overlays
+│       ├── carousel_poster_enhancer.py   # Poster generation with ratings & smart title breaking
+│       ├── carousel_video_generator.py   # Carousel video rendering with FFmpeg
+│       ├── movie_poster_downloader.py    # TMDB poster fetching
+│       ├── perplexity_researcher.py      # Perplexity API research
+│       ├── narration_script_generator.py # Synchronized narration script generation
+│       └── voice_manager.py              # Voice preset & library management
 ├── workflows/
 │   └── sdxl_slideshow.json          # NEW: ComfyUI SDXL workflow template
 ├── examples/

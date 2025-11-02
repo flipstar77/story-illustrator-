@@ -160,9 +160,9 @@ explore. Let me walk you through the whole story!"
 
 if __name__ == "__main__":
     print("\n")
-    print("╔" + "=" * 68 + "╗")
-    print("║" + " " * 15 + "CHATTERBOX TTS VOICE SYSTEM" + " " * 25 + "║")
-    print("╚" + "=" * 68 + "╝")
+    print("=" * 70)
+    print(" " * 15 + "CHATTERBOX TTS VOICE SYSTEM")
+    print("=" * 70)
 
     demo_voice_presets()
     demo_voice_cloning()
