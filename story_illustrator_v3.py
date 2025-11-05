@@ -25,6 +25,7 @@ from story_illustrator.core.phase1_logic import StoryChunker
 from story_illustrator.core.phase2_logic import ImageGenerator
 from story_illustrator.core.phase3_logic import VideoRenderer
 from story_illustrator.core.phase4_logic import SRTTranslator, WhisperTranscriber
+from story_illustrator.utils.videoswarm_launcher import VideoSwarmLauncher
 
 # Try to import TTS (requires PyTorch, may fail)
 try:
@@ -37,6 +38,21 @@ except (ImportError, OSError) as e:
     TTSGenerator = None
     VoicePreset = None
     VoiceManager = None
+
+# Import DengeAI Prompt Builder
+try:
+    from story_illustrator.utils.dengeai_prompt_builder import DengeAIPromptBuilder
+    from story_illustrator.utils.prompt_image_mapper import PromptImageMapper
+    from PIL import Image, ImageTk
+    DENGEAI_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: DengeAI Prompt Builder not available: {e}")
+    DENGEAI_AVAILABLE = False
+    DengeAIPromptBuilder = None
+    PromptImageMapper = None
+
+# Import Prompt Enhancer Chat UI
+from story_illustrator.ui import PromptEnhancerTab
 
 
 class StoryIllustratorApp:
@@ -54,6 +70,7 @@ class StoryIllustratorApp:
         self.story_chunker = StoryChunker(logger=self.log)
         self.image_generator = ImageGenerator(logger=self.log)
         self.tts_generator = TTSGenerator(logger=self.log) if TTS_AVAILABLE else None
+        self.videoswarm_launcher = VideoSwarmLauncher()
 
         # State
         self.sections = []
@@ -87,6 +104,10 @@ class StoryIllustratorApp:
         self.create_settings_tab()
         self.create_sleep_videos_notebook()
         self.create_actor_filmography_tab()
+        self.create_dengeai_prompt_builder_tab()
+
+        # Add Prompt Enhancer Chat tab
+        PromptEnhancerTab(self.notebook, self.root)
 
     # ========== SETTINGS TAB ==========
 
@@ -1517,6 +1538,22 @@ All API keys are stored locally in .env file and never shared.
                   command=self.research_and_download_filmography,
                   style='Accent.TButton').grid(row=2, column=0, columnspan=3, pady=10)
 
+        # Step 1.5: Enrich Data (Optional)
+        enrich_frame = ttk.LabelFrame(frame, text="💎 Step 1.5: Enrich Data (Optional)", padding="10")
+        enrich_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(enrich_frame, text="CSV File (from Step 1):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.enrich_csv_var = tk.StringVar()
+        ttk.Entry(enrich_frame, textvariable=self.enrich_csv_var, width=40).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(enrich_frame, text="Browse", command=self.browse_enrich_csv).grid(row=0, column=2, padx=5, pady=5)
+
+        ttk.Label(enrich_frame, text="Add IMDB ratings, Rotten Tomatoes scores, budgets, and salary data",
+                 font=('Arial', 9, 'italic')).grid(row=1, column=0, columnspan=3, sticky=tk.W, padx=5, pady=2)
+
+        ttk.Button(enrich_frame, text="💎 Enrich Actor Data",
+                  command=self.enrich_actor_data,
+                  style='Accent.TButton').grid(row=2, column=0, columnspan=3, pady=10)
+
         # Step 2: Generate Carousel Video
         carousel_frame = ttk.LabelFrame(frame, text="🎥 Step 2: Generate Carousel Video", padding="10")
         carousel_frame.pack(fill=tk.X, pady=5)
@@ -1560,11 +1597,16 @@ All API keys are stored locally in .env file and never shared.
                   command=self.generate_carousel_video,
                   style='Accent.TButton').grid(row=5, column=0, columnspan=3, pady=10)
 
+        # Review Panel Button
+        ttk.Button(carousel_frame, text="📹 Review Carousel Videos",
+                  command=self.open_video_review_panel,
+                  style='Accent.TButton').grid(row=6, column=0, columnspan=3, pady=5)
+
         # Log output
         log_frame = ttk.LabelFrame(frame, text="📋 Progress Log", padding="10")
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        log_frame.pack(fill=tk.BOTH, expand=False, pady=5)
 
-        self.actor_log = scrolledtext.ScrolledText(log_frame, height=15, wrap=tk.WORD)
+        self.actor_log = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD)
         self.actor_log.pack(fill=tk.BOTH, expand=True)
 
     def browse_actor_output(self):
@@ -1599,6 +1641,162 @@ All API keys are stored locally in .env file and never shared.
         )
         if file:
             self.custom_voice_var.set(file)
+
+    def open_video_review_panel(self):
+        """Open video review panel in new window"""
+        import os
+        from story_illustrator.utils.video_review_panel import VideoReviewPanel
+
+        # Use absolute path with proper Windows format
+        output_dir = os.path.abspath(os.path.join(os.getcwd(), "output", "actor_analysis"))
+
+        if not os.path.exists(output_dir):
+            messagebox.showwarning(
+                "No Videos Found",
+                f"Actor carousel directory not found:\n{output_dir}\n\n"
+                "Please generate some carousel videos first."
+            )
+            return
+
+        # Create new window for review panel
+        review_window = tk.Toplevel(self.root)
+        review_window.title("Video Review Panel - Actor Carousels")
+        review_window.geometry("1200x800")
+
+        # Add review panel
+        panel = VideoReviewPanel(review_window, output_dir)
+        panel.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Bind mousewheel to window for global scroll
+        def _window_scroll(event):
+            if hasattr(panel, 'canvas') and panel.canvas:
+                if hasattr(event, 'delta') and event.delta != 0:
+                    panel.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                elif hasattr(event, 'num'):
+                    if event.num == 4:
+                        panel.canvas.yview_scroll(-1, "units")
+                    elif event.num == 5:
+                        panel.canvas.yview_scroll(1, "units")
+
+        review_window.bind("<MouseWheel>", _window_scroll)
+        review_window.bind("<Button-4>", _window_scroll)
+        review_window.bind("<Button-5>", _window_scroll)
+
+        self.log(f"Opened video review panel for: {output_dir}", "INFO", self.actor_log)
+
+    def browse_enrich_csv(self):
+        """Browse for CSV file to enrich"""
+        from tkinter import filedialog
+        file = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        if file:
+            self.enrich_csv_var.set(file)
+            # Auto-fill Step 2 with the same CSV (will be replaced after enrichment)
+            self.carousel_csv_var.set(file)
+
+    def enrich_actor_data(self):
+        """Enrich actor filmography data with IMDB ratings, RT scores, budgets, and salaries"""
+        csv_path = self.enrich_csv_var.get().strip()
+        if not csv_path:
+            messagebox.showerror("Error", "Please select a CSV file to enrich")
+            return
+
+        def run_enrichment():
+            try:
+                import sys
+                from io import StringIO
+
+                class GUILogger:
+                    def __init__(self, log_func):
+                        self.log_func = log_func
+
+                    def write(self, text):
+                        if text.strip():
+                            self.log_func(text.strip())
+
+                    def flush(self):
+                        pass
+
+                old_stdout = sys.stdout
+
+                def log_to_actor(msg):
+                    self.actor_log.insert(tk.END, msg + "\n")
+                    self.actor_log.see(tk.END)
+                    self.actor_log.update()
+
+                sys.stdout = GUILogger(log_to_actor)
+
+                try:
+                    log_to_actor(f"Starting enrichment for: {csv_path}")
+
+                    from story_illustrator.utils.perplexity_researcher import PerplexityResearcher
+                    from pathlib import Path
+                    import pandas as pd
+
+                    researcher = PerplexityResearcher()
+                    csv_file = Path(csv_path)
+
+                    # Load CSV
+                    df = pd.read_csv(csv_file)
+                    log_to_actor(f"Loaded {len(df)} movies from CSV")
+
+                    # Add new columns if they don't exist
+                    for col in ['imdb_rating', 'rotten_tomatoes', 'budget']:
+                        if col not in df.columns:
+                            df[col] = ''
+
+                    # Enrich each movie
+                    for idx, row in df.iterrows():
+                        log_to_actor(f"[{idx+1}/{len(df)}] Enriching {row['title']} ({row['year']})...")
+
+                        query = f"""
+                        For the movie "{row['title']}" ({row['year']}):
+                        1. IMDB rating (e.g. 7.5)
+                        2. Rotten Tomatoes score (e.g. 85%)
+                        3. Production budget (e.g. $50 million)
+
+                        Return as JSON: {{"imdb_rating": "7.5", "rotten_tomatoes": "85%", "budget": "$50 million"}}
+                        """
+
+                        result = researcher.research(query)
+
+                        # Parse JSON from result
+                        import json
+                        import re
+                        json_match = re.search(r'\{.*\}', result, re.DOTALL)
+                        if json_match:
+                            try:
+                                data = json.loads(json_match.group())
+                                df.at[idx, 'imdb_rating'] = data.get('imdb_rating', '')
+                                df.at[idx, 'rotten_tomatoes'] = data.get('rotten_tomatoes', '')
+                                df.at[idx, 'budget'] = data.get('budget', '')
+                            except json.JSONDecodeError:
+                                log_to_actor(f"  Could not parse JSON response")
+
+                    # Save enriched CSV
+                    enriched_csv = csv_file.parent / f"{csv_file.stem}_enriched.csv"
+                    df.to_csv(enriched_csv, index=False)
+
+                    log_to_actor("=" * 50)
+                    log_to_actor("✓ ENRICHMENT COMPLETE!")
+                    log_to_actor(f"Enriched data saved to: {enriched_csv}")
+                    log_to_actor("=" * 50)
+
+                    # Auto-fill Step 2 with enriched CSV
+                    self.carousel_csv_var.set(str(enriched_csv))
+
+                    messagebox.showinfo("Success", f"Enrichment complete!\nSaved to: {enriched_csv}")
+
+                finally:
+                    sys.stdout = old_stdout
+
+            except Exception as e:
+                log_to_actor(f"ERROR: {str(e)}")
+                messagebox.showerror("Error", f"Enrichment failed: {str(e)}")
+
+        threading.Thread(target=run_enrichment, daemon=True).start()
 
     def research_and_download_filmography(self):
         """Research actor filmography and download posters"""
@@ -1709,7 +1907,8 @@ All API keys are stored locally in .env file and never shared.
                     log_to_actor(f"{len(movies)} movies, {len([p for p in poster_paths.values() if p])} posters downloaded")
                     log_to_actor("=" * 50)
 
-                    # Auto-fill CSV path for Step 2
+                    # Auto-fill CSV paths for Step 1.5 and Step 2
+                    self.enrich_csv_var.set(str(output_csv))
                     self.carousel_csv_var.set(str(output_csv))
 
                     messagebox.showinfo("Success", f"Research complete!\n{len(movies)} movies found\n{output_csv}")
@@ -2068,6 +2267,396 @@ All API keys are stored locally in .env file and never shared.
                 messagebox.showerror("Error", f"Video generation failed: {str(e)}")
 
         threading.Thread(target=run_generation, daemon=True).start()
+
+    # ========== DENGEAI PROMPT BUILDER TAB ==========
+
+    def create_dengeai_prompt_builder_tab(self):
+        """Create DengeAI Prompt Builder tab for cinematic AI video prompts"""
+        if not DENGEAI_AVAILABLE:
+            return
+
+        frame = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(frame, text="🎬 Prompt Builder")
+
+        # Title
+        ttk.Label(frame, text="DengeAI Cinematic Prompt Builder",
+                 font=('Arial', 14, 'bold')).pack(pady=(0, 10))
+
+        ttk.Label(frame, text="Build professional AI video prompts with 20+ cinematographic categories",
+                 font=('Arial', 10)).pack(pady=(0, 20))
+
+        # Initialize prompt builder and image mapper
+        self.prompt_builder = DengeAIPromptBuilder()
+        self.image_mapper = PromptImageMapper()
+
+        # Create main container with two sections
+        main_container = ttk.Frame(frame)
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        # Left side: Categories and controls
+        left_frame = ttk.Frame(main_container)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Right side: Image display
+        right_frame = ttk.LabelFrame(main_container, text="📸 Visual Reference", padding="10")
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
+
+        # Image display area
+        self.example_image_label = ttk.Label(right_frame, text="Select an option\nto see example",
+                                            font=('Arial', 10, 'italic'),
+                                            foreground='#666',
+                                            justify=tk.CENTER)
+        self.example_image_label.pack(pady=20)
+
+        # Store current photo reference (prevent garbage collection)
+        self.current_photo = None
+
+        # Create scrollable frame in left side
+        canvas = tk.Canvas(left_frame)
+        scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Store dropdown variables
+        self.prompt_dropdowns = {}
+
+        # Create category selection UI
+        categories_frame = ttk.Frame(scrollable_frame)
+        categories_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Define categories to display
+        categories = [
+            ("Shot Size", "SHOT_SIZES"),
+            ("Camera Angle", "CAMERA_ANGLES"),
+            ("Camera Movement", "CAMERA_MOVEMENTS"),
+            ("Composition", "COMPOSITION"),
+            ("Lens Type", "LENS_TYPES"),
+            ("Focus Technique", "FOCUS_TECHNIQUES"),
+            ("Lighting Type", "LIGHTING_TYPES"),
+            ("Light Source", "LIGHT_SOURCES"),
+            ("Time of Day", "TIME_OF_DAY"),
+            ("Color Tone", "COLOR_TONES"),
+            ("Motion Type", "MOTION_TYPES"),
+            ("Visual Effect", "VISUAL_EFFECTS"),
+            ("Visual Style", "VISUAL_STYLES"),
+            ("Character Emotion", "CHARACTER_EMOTIONS"),
+            ("Advanced Camera", "ADVANCED_CAMERA"),
+            ("Aspect Ratio", "ASPECT_RATIOS")
+        ]
+
+        row = 0
+        for label, category_key in categories:
+            # Category label
+            ttk.Label(categories_frame, text=f"{label}:",
+                     font=('Arial', 10, 'bold')).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+
+            # Dropdown
+            var = tk.StringVar(value="(none)")
+            options = ["(none)"] + self.prompt_builder.get_category_options(category_key)
+            dropdown = ttk.Combobox(categories_frame, textvariable=var,
+                                   values=options, state="readonly", width=50)
+            dropdown.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
+            dropdown.bind("<<ComboboxSelected>>",
+                         lambda e, k=category_key: self.on_category_selected(k))
+
+            self.prompt_dropdowns[category_key] = var
+
+            # Random button
+            ttk.Button(categories_frame, text="🎲",
+                      command=lambda k=category_key: self.random_category_selection(k),
+                      width=3).grid(row=row, column=2, padx=2, pady=5)
+
+            row += 1
+
+        # Preset section
+        preset_frame = ttk.LabelFrame(scrollable_frame, text="📋 Professional Presets", padding="10")
+        preset_frame.pack(fill=tk.X, padx=5, pady=10)
+
+        # Preset descriptions with visual cues
+        preset_info = {
+            "cinematic_portrait": "👤 Portrait | Close-up faces, natural lighting, shallow focus",
+            "epic_landscape": "🏔️ Landscape | Wide vistas, aerial views, dramatic scenery",
+            "noir_detective": "🕵️ Film Noir | Dark shadows, mystery, black & white classic",
+            "cyberpunk_city": "🌃 Cyberpunk | Neon lights, futuristic cityscapes, high-tech",
+            "horror_scene": "😱 Horror | Suspense, tilted angles, dark atmosphere",
+            "action_sequence": "💥 Action | Fast motion, dynamic movement, intensity",
+            "dreamy_fantasy": "✨ Fantasy | Magical, ethereal, soft and surreal",
+            "product_commercial": "📦 Product | Clean showcase, professional lighting",
+            "documentary_real": "📹 Documentary | Realistic, natural, observational",
+            "music_video": "🎵 Music Video | Stylized, colorful, rhythm-driven"
+        }
+
+        ttk.Label(preset_frame, text="Quick Load:",
+                 font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+
+        self.preset_var = tk.StringVar(value="(none)")
+        preset_options = ["(none)"] + self.prompt_builder.get_preset_names()
+        preset_dropdown = ttk.Combobox(preset_frame, textvariable=self.preset_var,
+                                      values=preset_options, state="readonly", width=35)
+        preset_dropdown.grid(row=0, column=1, padx=5, pady=5, columnspan=2)
+        preset_dropdown.bind("<<ComboboxSelected>>", self.on_preset_selected)
+
+        ttk.Button(preset_frame, text="Load Preset",
+                  command=self.load_dengeai_preset).grid(row=0, column=3, padx=5, pady=5)
+
+        ttk.Button(preset_frame, text="Clear All",
+                  command=self.clear_all_dengeai_selections).grid(row=0, column=4, padx=5, pady=5)
+
+        ttk.Button(preset_frame, text="🎲 Randomize All",
+                  command=self.randomize_all_categories).grid(row=0, column=5, padx=5, pady=5)
+
+        # Preset description label
+        self.preset_description_label = ttk.Label(preset_frame, text="",
+                                                 font=('Arial', 9, 'italic'),
+                                                 foreground='#666')
+        self.preset_description_label.grid(row=1, column=0, columnspan=6, sticky=tk.W, padx=5, pady=(0, 5))
+
+        # Store preset info for quick access
+        self.preset_info = preset_info
+
+        # Preview section
+        preview_frame = ttk.LabelFrame(scrollable_frame, text="📝 Generated Prompt", padding="10")
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=10)
+
+        # Description toggle
+        self.include_descriptions_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(preview_frame, text="Include full descriptions",
+                       variable=self.include_descriptions_var,
+                       command=self.update_prompt_preview).pack(anchor=tk.W, pady=5)
+
+        # Prompt preview text
+        self.prompt_preview_text = scrolledtext.ScrolledText(preview_frame, height=8, wrap=tk.WORD)
+        self.prompt_preview_text.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Action buttons
+        button_frame = ttk.Frame(preview_frame)
+        button_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Button(button_frame, text="📋 Copy to Clipboard",
+                  command=self.copy_dengeai_prompt).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(button_frame, text="💾 Save to File",
+                  command=self.save_dengeai_prompt).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(button_frame, text="🎬 Use with WAN",
+                  command=self.use_prompt_with_wan).pack(side=tk.LEFT, padx=5)
+
+        # Visual reference guide
+        guide_frame = ttk.LabelFrame(scrollable_frame, text="💡 Quick Reference Guide", padding="10")
+        guide_frame.pack(fill=tk.X, padx=5, pady=10)
+
+        guide_text = """
+Shot Sizes: ECU (eyes) → CU (face) → MCU (chest up) → MS (waist up) → WS (full body) → EWS (environment)
+Camera Angles: High (looking down) | Eye Level (neutral) | Low (looking up) | Dutch (tilted)
+Lighting: Natural (daylight) | Golden Hour (sunset) | Soft (flattering) | Hard (dramatic) | Low-Key (moody)
+Styles: Cinematic (film-like) | Documentary (realistic) | Noir (B&W mystery) | Cyberpunk (neon future)
+Motion: Slow Motion (dramatic) | Normal (real-time) | Time-Lapse (sped up) | Freeze Frame (paused)
+
+Best Practices:
+• Start with a preset and modify as needed
+• Match lighting in prompt to your source image
+• Use 4-6 categories for best results
+• Static camera + subtle motion = most stable results
+• Combine Shot Size + Angle + Lighting + Style for complete control
+        """
+
+        guide_label = ttk.Label(guide_frame, text=guide_text.strip(),
+                               font=('Courier', 8), justify=tk.LEFT)
+        guide_label.pack(anchor=tk.W, padx=5, pady=5)
+
+        # Initial preview
+        self.update_prompt_preview()
+
+    def random_category_selection(self, category_key):
+        """Randomly select option for a category"""
+        option = self.prompt_builder.select_random(category_key)
+        if option:
+            self.prompt_dropdowns[category_key].set(option)
+            self.on_category_selected(category_key)
+
+    def on_category_selected(self, category_key):
+        """Handle category selection - update both prompt preview and image display"""
+        # Update prompt preview
+        self.update_prompt_preview()
+
+        # Update image display
+        option = self.prompt_dropdowns[category_key].get()
+        if option and option != "(none)":
+            self.display_example_image(category_key, option)
+        else:
+            self.clear_example_image()
+
+    def display_example_image(self, category_key, option_name):
+        """Display example image for selected option"""
+        try:
+            # Get image path from mapper
+            image_path = self.image_mapper.get_image_path(category_key, option_name)
+
+            if image_path and image_path.exists():
+                # Load and resize image
+                pil_image = Image.open(image_path)
+
+                # Resize to fit display area (max 400x300)
+                max_width, max_height = 400, 300
+                pil_image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(pil_image)
+
+                # Update label
+                self.example_image_label.config(image=photo, text="")
+                self.current_photo = photo  # Keep reference to prevent garbage collection
+
+            else:
+                # No image available for this option
+                self.example_image_label.config(
+                    image="",
+                    text=f"No preview available\nfor this option",
+                    font=('Arial', 9, 'italic'),
+                    foreground='#999'
+                )
+                self.current_photo = None
+
+        except Exception as e:
+            print(f"Error displaying image: {e}")
+            self.example_image_label.config(
+                image="",
+                text="Error loading\npreview image",
+                font=('Arial', 9, 'italic'),
+                foreground='#ff0000'
+            )
+            self.current_photo = None
+
+    def clear_example_image(self):
+        """Clear the example image display"""
+        self.example_image_label.config(
+            image="",
+            text="Select an option\nto see example",
+            font=('Arial', 10, 'italic'),
+            foreground='#666'
+        )
+        self.current_photo = None
+
+    def randomize_all_categories(self):
+        """Randomly select options for all categories"""
+        for category_key in self.prompt_dropdowns.keys():
+            self.random_category_selection(category_key)
+
+    def on_preset_selected(self, event=None):
+        """Update preset description when selection changes"""
+        preset_name = self.preset_var.get()
+        if preset_name == "(none)":
+            self.preset_description_label.config(text="")
+        elif preset_name in self.preset_info:
+            self.preset_description_label.config(text=self.preset_info[preset_name])
+        else:
+            self.preset_description_label.config(text="")
+
+    def load_dengeai_preset(self):
+        """Load selected preset"""
+        preset_name = self.preset_var.get()
+        if preset_name == "(none)":
+            return
+
+        if self.prompt_builder.load_preset(preset_name):
+            # Update dropdowns
+            for category_key, var in self.prompt_dropdowns.items():
+                if category_key in self.prompt_builder.selected_options:
+                    var.set(self.prompt_builder.selected_options[category_key])
+                else:
+                    var.set("(none)")
+
+            self.update_prompt_preview()
+            # Update description
+            if preset_name in self.preset_info:
+                self.preset_description_label.config(text=self.preset_info[preset_name])
+            messagebox.showinfo("Success", f"Loaded preset: {preset_name}")
+        else:
+            messagebox.showerror("Error", f"Failed to load preset: {preset_name}")
+
+    def clear_all_dengeai_selections(self):
+        """Clear all category selections"""
+        self.prompt_builder.clear_selections()
+        for var in self.prompt_dropdowns.values():
+            var.set("(none)")
+        self.update_prompt_preview()
+
+    def update_prompt_preview(self):
+        """Update prompt preview based on selections"""
+        # Update prompt builder with current selections
+        self.prompt_builder.clear_selections()
+        for category_key, var in self.prompt_dropdowns.items():
+            option = var.get()
+            if option != "(none)":
+                self.prompt_builder.select_category(category_key, option)
+
+        # Generate prompt
+        include_descriptions = self.include_descriptions_var.get()
+        prompt = self.prompt_builder.build_prompt(include_descriptions=include_descriptions)
+
+        # Update preview
+        self.prompt_preview_text.delete('1.0', tk.END)
+        if prompt:
+            self.prompt_preview_text.insert('1.0', prompt)
+        else:
+            self.prompt_preview_text.insert('1.0', "(No options selected)")
+
+    def copy_dengeai_prompt(self):
+        """Copy prompt to clipboard"""
+        prompt = self.prompt_preview_text.get('1.0', tk.END).strip()
+        if prompt and prompt != "(No options selected)":
+            pyperclip.copy(prompt)
+            messagebox.showinfo("Success", "Prompt copied to clipboard!")
+        else:
+            messagebox.showwarning("Warning", "No prompt to copy")
+
+    def save_dengeai_prompt(self):
+        """Save prompt to file"""
+        prompt = self.prompt_preview_text.get('1.0', tk.END).strip()
+        if not prompt or prompt == "(No options selected)":
+            messagebox.showwarning("Warning", "No prompt to save")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Save Prompt",
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+
+        if file_path:
+            try:
+                Path(file_path).write_text(prompt, encoding='utf-8')
+                messagebox.showinfo("Success", f"Prompt saved to {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save prompt: {e}")
+
+    def use_prompt_with_wan(self):
+        """Use generated prompt with WAN animator"""
+        prompt = self.prompt_preview_text.get('1.0', tk.END).strip()
+        if not prompt or prompt == "(No options selected)":
+            messagebox.showwarning("Warning", "No prompt generated")
+            return
+
+        # TODO: Integrate with WAN animator
+        # For now, just copy to clipboard and notify
+        pyperclip.copy(prompt)
+        messagebox.showinfo("Ready for WAN",
+                          "Prompt copied to clipboard!\n\n"
+                          "You can now use this prompt with:\n"
+                          "- WAN 2.2 Image-to-Video\n"
+                          "- ComfyUI workflows\n"
+                          "- Other AI video tools")
 
     def on_closing(self):
         """Handle window close"""
